@@ -13,8 +13,10 @@ except importlib_metadata.PackageNotFoundError:
     optimum_version = None
 
 from openvino import get_version as get_rt_version  # pylint: disable=no-name-in-module,import-error
-telemetry = init_ovc_telemetry('OpenVINO')
-telemetry.send_event("ov", "import", "general_import")
+
+# The runtime imports this module to expose convert_model. Do not initialize
+# optional telemetry here: its OS queries can block importing the runtime.
+# Actual conversion initializes telemetry in convert_impl._convert instead.
 
 if is_optimum() and optimum_version is not None:
     telemetry = init_ovc_telemetry("Optimum Intel", optimum_version)

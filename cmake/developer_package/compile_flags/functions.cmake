@@ -370,7 +370,10 @@ function(ov_abi_free_target target)
     # Since gcc 13.0 abi=18
     # Version 18, which first appeard in G++ 13, fixes manglings of lambdas that have additional context.
     # which means we became not compatible
-    if(CMAKE_COMPILER_IS_GNUCXX AND NOT MINGW64 AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13.0)
+    # Identify 64-bit MinGW from the compiler target instead of the legacy MINGW64 variable.
+    if(CMAKE_COMPILER_IS_GNUCXX AND
+       NOT (WIN32 AND OPENVINO_GCC_TARGET_MACHINE MATCHES "amd64|x86_64|AMD64") AND
+       CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13.0)
         target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wabi=11>)
     endif()
 endfunction()

@@ -44,7 +44,11 @@ function(ov_check_pip_package)
 
     if(Python3_Interpreter_FOUND)
         execute_process(
-            COMMAND ${Python3_EXECUTABLE} -c "import pkg_resources ; pkg_resources.require('${REQ}')"
+            COMMAND ${Python3_EXECUTABLE} -c "
+from check_python_requirements import check_python_requirement ;
+check_python_requirement('${REQ}') ;
+            "
+            WORKING_DIRECTORY "${OpenVINODeveloperScripts_DIR}"
             RESULT_VARIABLE EXIT_CODE
             OUTPUT_VARIABLE OUTPUT_TEXT
             ERROR_VARIABLE ERROR_TEXT)

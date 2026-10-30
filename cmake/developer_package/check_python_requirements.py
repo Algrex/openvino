@@ -8,6 +8,23 @@ from importlib.metadata import PackageNotFoundError, version as _installed_versi
 from packaging.requirements import Requirement
 
 
+def check_python_requirement(raw: str) -> None:
+    """Validate one requirement using distribution metadata, without pkg_resources."""
+    raw = raw.strip()
+    if not raw or raw.startswith(("#", "-")):
+        return
+    req = Requirement(raw)
+    if req.marker is not None and not req.marker.evaluate():
+        return
+    try:
+        installed = _installed_version(req.name)
+    except PackageNotFoundError:
+        raise RuntimeError(f"Required package '{req.name}' is not installed")
+    if req.specifier and installed not in req.specifier:
+        raise RuntimeError(
+            f"Installed '{req.name}=={installed}' does not satisfy requirement '{raw}'")
+
+
 def check_python_requirements(requirements_path: str) -> None:
     """
     Checks if the requirements defined in `requirements_path` are installed
@@ -66,17 +83,4 @@ def check_python_requirements(requirements_path: str) -> None:
     # (dropped in setuptools>=82), so the check keeps working with modern
     # setuptools. Raises to signal an unsatisfied requirement to the caller.
     for raw in requirements:
-        raw = raw.strip()
-        if not raw or raw.startswith(("#", "-")):
-            continue
-        req = Requirement(raw)
-        # Skip requirements whose environment markers don't apply here.
-        if req.marker is not None and not req.marker.evaluate():
-            continue
-        try:
-            installed = _installed_version(req.name)
-        except PackageNotFoundError:
-            raise RuntimeError(f"Required package '{req.name}' is not installed")
-        if req.specifier and installed not in req.specifier:
-            raise RuntimeError(
-                f"Installed '{req.name}=={installed}' does not satisfy requirement '{raw}'")
+        check_python_requirement(raw)

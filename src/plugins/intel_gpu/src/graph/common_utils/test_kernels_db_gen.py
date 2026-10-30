@@ -5,6 +5,13 @@
 import unittest
 import os, sys
 import argparse
+import builtins
+import contextlib
+import io
+from pathlib import Path
+import runpy
+import tempfile
+from unittest.mock import patch
 from kernels_db_gen import Code2CHeaders
 
 class TestOpenCLCodePreprocessing(unittest.TestCase):
@@ -191,6 +198,54 @@ int result1=GET_VECTOR_ELEMENT(vec,0);
         os.remove(self.batch_header2_path)
         os.remove(self.header_path)
         os.remove(self.no_opt_header_path)
+
+class TestCodeGenerationEncoding(unittest.TestCase):
+    def test_utf8_sources_with_gbk_default(self):
+        # Reproduce Windows code pages independently of the test host's locale.
+        original_open = builtins.open
+
+        def gbk_open(file, mode='r', *args, **kwargs):
+            if 'b' not in mode and not args and kwargs.get('encoding') is None:
+                kwargs['encoding'] = 'gbk'
+            return original_open(file, mode, *args, **kwargs)
+
+        gpu_src = Path(__file__).resolve().parents[2]
+        scripts = [
+            gpu_src / 'graph/common_utils/kernels_db_gen.py',
+            gpu_src / 'kernel_selector/primitive_db_gen.py',
+        ]
+        with tempfile.TemporaryDirectory(dir=os.getcwd()) as temp_dir:
+            root = Path(temp_dir)
+            kernels = root / 'kernels'
+            headers = kernels / 'include'
+            batch_headers = headers / 'batch_headers'
+            batch_headers.mkdir(parents=True)
+            (kernels / 'test.cl').write_text(
+                '// UTF-8 comment: \u201cquotes\u201d\n#include "include/header.cl"\n'
+                '__kernel void test() { char marker[] = "\u03bb"; int x = VALUE; }\n', encoding='utf-8')
+            (headers / 'header.cl').write_text(
+                '// UTF-8 comment: \u201cquotes\u201d\n#include "batch_headers/batch.cl"\n', encoding='utf-8')
+            (batch_headers / 'batch.cl').write_text(
+                '// UTF-8 comment: \u201cquotes\u201d\n#define VALUE 2\n', encoding='utf-8')
+
+            for script in scripts:
+                with self.subTest(generator=script.name):
+                    sources = root / (script.stem + '_sources.inc')
+                    batch = root / (script.stem + '_headers.inc')
+                    if script.name == 'kernels_db_gen.py':
+                        args = ['-in_kernels_dir', str(kernels), '-in_headers_dir', str(headers),
+                                '-out_sources', str(sources), '-out_headers', str(batch), '-lang', 'ocl']
+                    else:
+                        args = ['-kernels', str(kernels), '-out_path', str(root),
+                                '-out_file_name_prim_db', sources.name,
+                                '-out_file_name_batch_headers', batch.name]
+                    with patch('builtins.open', side_effect=gbk_open), \
+                            patch.object(sys, 'argv', [str(script)] + args), \
+                            contextlib.redirect_stdout(io.StringIO()):
+                        runpy.run_path(str(script), run_name='__main__')
+                    self.assertIn('\u03bb', sources.read_text(encoding='utf-8'))
+                    self.assertIn('#define VALUE 2', batch.read_text(encoding='utf-8'))
+
 
 if __name__ == '__main__':
     unittest.main()
